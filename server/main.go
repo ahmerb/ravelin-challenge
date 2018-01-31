@@ -8,35 +8,96 @@ import (
   "net/http"
 )
 
+// launch the server
 func main() {
-  http.HandleFunc("/helloworld", helloWorldHandler)
+  // handler for post requests to /data
+  http.HandleFunc("/", dataHandler)
+
+  // static files
+  http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("./client"))))
 
   fmt.Println("Server now running on localhost:8080")
-  fmt.Println(`Try running: curl -X POST -d '{"hello":"test123"}' http://localhost:8080/helloworld`)
+  fmt.Println(`Try running: curl -X POST -d '{"SessionId":"test123"}' http://localhost:8080/`)
   log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-type helloWorldRequest struct {
-  Hello string `json:"hello"`
+// define the data type we wish to receive
+type Data struct {
+  WebsiteUrl         string
+  SessionId          string
+  ResizeFrom         Dimension
+  ResizeTo           Dimension
+  CopyAndPaste       map[string]bool // map[fieldId]true
+  FormCompletionTime int // Seconds
 }
 
-func helloWorldHandler(w http.ResponseWriter, r *http.Request) {
-  body, err := ioutil.ReadAll(r.Body)
-  if err != nil {
+type Dimension struct {
+  Width  string
+  Height string
+}
+
+// request handler
+func dataHandler(w http.ResponseWriter, r *http.Request) {
+
+  // get request - serve home page
+  // post request - parse and print Data json
+  // other - return 404 error
+  if r.Method == "GET" {
+    http.ServeFile(w, r, "./client/index.html")
+    return
+  } else if r.Method == "POST" {
+    // read the body from the http request
+    body, err := ioutil.ReadAll(r.Body)
+
+    // return error status + msg if read fails
+    if err != nil {
       w.WriteHeader(http.StatusBadRequest)
       w.Write([]byte("Unable to read body"))
       return
+    }
+
+    // unmarshal the request payload
+    var data Data
+    err = json.Unmarshal(body, &data)
+
+    // if unmarshal fails then return error status + msg
+    if err != nil {
+      w.WriteHeader(http.StatusBadRequest)
+      w.Write([]byte("Unable to unmarshal JSON request"))
+      return
+    }
+
+    // print the body
+    log.Printf("%v\n", string(body))
+
+    // return ok status
+    w.WriteHeader(http.StatusOK)
+
+
+    //-----------
+
+    // var data Data
+    // err := json.NewDecoder(r.Body).decode(&data)
+    //
+    // if err != nil {
+    //   w.WriteHeader(http.StatusBadRequest)
+    //   w.Write([]byte("Unable to read body"))
+    //   return
+    // }
+    //
+    // // return ok status
+    // w.WriteHeader(http.StatusOK)
+  } else {
+    w.WriteHeader(http.StatusNotFound)
+    w.Write([]byte(fmt.Sprintf("The HTTP verb %s is not supported", r.Method)))
   }
 
-  req := &helloWorldRequest{}
 
-  if err = json.Unmarshal(body, req); err != nil {
-    w.WriteHeader(http.StatusBadRequest)
-    w.Write([]byte("Unable to unmarshal JSON request"))
-    return
-  }
-
-  log.Printf("Request received %+v", req)
-
-  w.WriteHeader(http.StatusOK)
 }
+
+
+// render an html template
+// func renderTemplate(w http.ResponseWriter, tmpl string) {
+//     t, _ := template.ParseFiles(tmpl + ".html")
+//     t.Execute(w)
+// }
