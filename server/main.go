@@ -10,11 +10,14 @@ import (
 
 // launch the server
 func main() {
-  // handler for post requests to /data
-  http.HandleFunc("/", rootHandler)
+  // handle requests from the form
+  http.HandleFunc("/form", formHandler)
 
   // static files
   http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("./client"))))
+
+  // handler for (all other) post requests
+  http.HandleFunc("/", rootHandler)
 
   fmt.Println("Server now running on localhost:8080")
   fmt.Println(`Try running: curl -X POST -d '{"SessionId":"test123"}' http://localhost:8080/`)
@@ -36,7 +39,21 @@ type Dimension struct {
   Height string
 }
 
-// request handler
+
+func formHandler(w http.ResponseWriter, r *http.Request) {
+  if r.Method == "POST" {
+    r.ParseForm()
+    log.Printf("%v\n", r.Form["inputEmail"])
+    log.Printf("path", r.URL.Path)
+    log.Printf("scheme", r.URL.Scheme)
+
+  // invalid HTTP verb
+  } else {
+    invalidVerb(w, r)
+  }
+}
+
+
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 
   // get request - serve home page
@@ -72,9 +89,15 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 
     // return ok status
     w.WriteHeader(http.StatusOK)
+    w.Write([]byte("Successful request."))
 
   } else {
-    w.WriteHeader(http.StatusNotFound)
-    w.Write([]byte(fmt.Sprintf("The HTTP verb %s is not supported", r.Method)))
+    invalidVerb(w, r)
   }
+}
+
+
+func invalidVerb(w http.ResponseWriter, r *http.Request) {
+  w.WriteHeader(http.StatusNotFound)
+  w.Write([]byte(fmt.Sprintf("The HTTP verb %s is not supported\n", r.Method)))
 }
