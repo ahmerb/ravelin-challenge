@@ -11,7 +11,7 @@ import (
 // launch the server
 func main() {
   // handler for post requests to /data
-  http.HandleFunc("/", dataHandler)
+  http.HandleFunc("/", rootHandler)
 
   // static files
   http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("./client"))))
@@ -37,7 +37,7 @@ type Dimension struct {
 }
 
 // request handler
-func dataHandler(w http.ResponseWriter, r *http.Request) {
+func rootHandler(w http.ResponseWriter, r *http.Request) {
 
   // get request - serve home page
   // post request - parse and print Data json
@@ -73,31 +73,8 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     // return ok status
     w.WriteHeader(http.StatusOK)
 
-
-    //-----------
-
-    // var data Data
-    // err := json.NewDecoder(r.Body).decode(&data)
-    //
-    // if err != nil {
-    //   w.WriteHeader(http.StatusBadRequest)
-    //   w.Write([]byte("Unable to read body"))
-    //   return
-    // }
-    //
-    // // return ok status
-    // w.WriteHeader(http.StatusOK)
   } else {
     w.WriteHeader(http.StatusNotFound)
     w.Write([]byte(fmt.Sprintf("The HTTP verb %s is not supported", r.Method)))
   }
-
-
 }
-
-
-// render an html template
-// func renderTemplate(w http.ResponseWriter, tmpl string) {
-//     t, _ := template.ParseFiles(tmpl + ".html")
-//     t.Execute(w)
-// }
