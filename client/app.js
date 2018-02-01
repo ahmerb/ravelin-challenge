@@ -2,8 +2,16 @@
 var url = "http://localhost:8080/";
 var session_id;
 
+// url of this website
+var website_url = "https://www.hello.co.uk/";
 
-function post_website_url(website_url, callback) {
+// event listener for window resizes
+window.onresize = resize;
+var height = window.innerHeight;
+var width = window.innerWidth;
+
+
+function post_website_url(callback) {
   // create xhttp req object
   var request = new XMLHttpRequest();
 
@@ -16,7 +24,7 @@ function post_website_url(website_url, callback) {
   // define callback upon response
   request.onload = function() {
     callback(request.response)
-  }
+  };
 
   // define the request payload
   var data = {
@@ -54,9 +62,52 @@ function post_new_session(callback) {
   request.send();
 }
 
+function post_resize(ResizeFrom, ResizeTo, callback) {
+  var request = new XMLHttpRequest();
+  var data = {
+    "WebsiteUrl": website_url,
+    "SessionId": session_id,
+    "ResizeFrom": ResizeFrom,
+    "ResizeTo": ResizeTo
+  };
+  request.open('POST', url);
+  request.responseType = 'json';
+  request.onload = function() {
+    callback(request.response);
+  };
+  request.send( JSON.stringify(data) );
+}
 
-// create a new session
-post_new_session(run);
+
+function resize() {
+  // prepare ResizeFrom field for request
+  var ResizeFrom = { "Height": height.toString(), "Width": width.toString() }
+
+  // update width and height
+  height = window.innerHeight
+  width  = window.innerWidth
+
+  // prepare ResizeTo field for request
+  var ResizeTo = { "Height": height.toString(), "Width": width.toString() }
+
+  // make a post request with new and old dimensions
+  post_resize(ResizeFrom, ResizeTo, function(response) {
+    console.log(response);
+  });
+}
+
+
+
+
+
+// ========================
+
+main();
+
+function main() {
+  // create a new session
+  post_new_session(run);
+}
 
 function run() {
   if (!session_id && session_id == "") {
@@ -64,7 +115,7 @@ function run() {
   }
   else {
     console.log(session_id);
-    post_website_url("hello.co.uk", function(response) {
+    post_website_url(function(response) {
       console.log(response);
     });
   }

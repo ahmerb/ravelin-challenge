@@ -14,6 +14,7 @@ import (
   "sync"
 )
 
+// the global session manager
 var globalSessions *SessionManager
 
 // launch the server
@@ -40,14 +41,18 @@ func main() {
 
 
 func newSessionHandler(w http.ResponseWriter, r *http.Request) {
+  // create a new session
   session := globalSessions.NewSession()
 
   // return the session id to the client
   response, err := json.Marshal(session)
-  log.Printf(string(response))
+
+  // if failed to marshal json, panic
   if err != nil {
     panic(err)
   }
+
+  // set headers and construct response body
   w.Header().Set("Content-Type", "application/json")
   w.WriteHeader(http.StatusCreated)
   w.Write(response)
@@ -56,10 +61,10 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
 
 func formHandler(w http.ResponseWriter, r *http.Request) {
   if r.Method == "POST" {
+
+    // parse the form and log a msg
     r.ParseForm()
-    log.Printf("%v\n", r.Form["inputEmail"])
-    log.Printf("path", r.URL.Path)
-    log.Printf("scheme", r.URL.Scheme)
+    log.Printf("received a form")
 
   // invalid HTTP verb
   } else {
@@ -73,10 +78,15 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
   // get request - serve home page
   // post request - parse and print Data json
   // other - return error status
+
   if r.Method == "GET" {
+
+    // serve up the home page
     http.ServeFile(w, r, "./client/index.html")
     return
+
   } else if r.Method == "POST" {
+
     // read the body from the http request
     body, err := ioutil.ReadAll(r.Body)
 
@@ -95,32 +105,43 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     if err != nil {
       w.WriteHeader(http.StatusBadRequest)
       w.Write([]byte("Unable to unmarshal JSON request"))
+      log.Printf(fmt.Sprintf("%v", err))
       return
     }
 
-    // print the body
-    log.Printf("%v\n", string(body))
+    // *** print the body ***
+    log.Printf("%v\n\n", string(body))
 
-    // get session details and update data for user
+    // retrieve session and update userData using request body
     var updatedData Data
     if data.SessionId != "" {
+
+      // ask the session manager for the session
       var session Session
       session, err = globalSessions.LoadSession(data.SessionId)
+
+      // if loading session failed, create error response
       if err != nil {
         w.WriteHeader(http.StatusBadRequest)
         w.Write([]byte(err.Error()))
         return
       }
+
+      // else, update this user's userData
       updatedData = updateUser(session, data)
     }
 
-    // return ok status and json of updatedData
+    // if all okay, return ok status, set headers and put updated userData in body
     w.WriteHeader(http.StatusOK)
     w.Header().Set("Content-Type", "application/json")
     response, err := json.Marshal(updatedData)
+
+    // if marshalling json fails, panic
     if err != nil {
       panic(err)
     }
+
+    // finally, write response
     w.Write(response)
 
   } else {
@@ -129,12 +150,19 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateUser(session Session, newData Data) Data {
+  // lock the session, it can only be modified at once
+  session.lock.Lock()
+  defer session.lock.Unlock()
+
+  // update session.userData
   currentData := session.userData
   updatedData := updateData(currentData, newData)
+
   return updatedData
 }
 
 func updateData(old, new Data) Data {
+  // TODO: this is all too simplistic wrt invalid requests
   updated := old
   if new.WebsiteUrl != "" {
     updated.WebsiteUrl = new.WebsiteUrl
@@ -154,6 +182,7 @@ func updateData(old, new Data) Data {
 }
 
 func invalidVerb(w http.ResponseWriter, r *http.Request) {
+  // write a 404 error if we don't support a request with this verb
   w.WriteHeader(http.StatusNotFound)
   w.Write([]byte(fmt.Sprintf("The HTTP verb %s is not supported\n", r.Method)))
 }
@@ -165,6 +194,7 @@ type Session struct {
   Sid string `json:"SessionId"`
   timeAccessed time.Time
   userData Data
+  lock sync.Mutex
 }
 
 // The data type we wish to maintain for each user
@@ -216,9 +246,9 @@ func (manager *SessionManager) LoadSession(sid string) (Session, error) {
   defer manager.lock.Unlock()
 
   // attempt to retrieve the session
-  session, present := manager.sessions[sid]
+  session, exists := manager.sessions[sid]
 
-  if !present {
+  if !exists {
     return Session{}, errors.New("Sessions: Session Not Found")
   }
 
@@ -230,6 +260,7 @@ func (manager *SessionManager) LoadSession(sid string) (Session, error) {
 
 
 func (manager *SessionManager) sessionId() string {
+  // return an encoded string of 32 random digits, or "" if that fails
   b := make([]byte, 32)
   if _, err := io.ReadFull(rand.Reader, b); err != nil {
     return ""
@@ -239,6 +270,7 @@ func (manager *SessionManager) sessionId() string {
 
 
 func NewSessionManager(name string, maxLifeTime int64) (*SessionManager) {
+  // create a new session manager, giving it a sessions map
   sessions := make(map[string]Session)
   return &SessionManager{sessions: sessions, name: name, maxLifeTime: maxLifeTime}
 }
