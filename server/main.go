@@ -115,7 +115,7 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // *** log the body ***
-    log.Printf(body)
+    log.Printf(string(body))
 
     // process this request body, returning the response body
     response := processPostReq(data.(map[string]interface{}), w, r) // also sets status
