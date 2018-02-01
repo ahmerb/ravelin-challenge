@@ -12,12 +12,13 @@ import (
   "crypto/rand"
   "time"
   "sync"
+  "strconv"
 )
 
-// the global session manager
+// The global session manager
 var globalSessions *SessionManager
 
-// launch the server
+// Launch the server
 func main() {
   // init session manager
   globalSessions = NewSessionManager("ravelin-test", 0)
@@ -39,6 +40,8 @@ func main() {
   log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
+
+// Request Handlers
 
 func newSessionHandler(w http.ResponseWriter, r *http.Request) {
   // create a new session
@@ -90,58 +93,22 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     // read the body from the http request
     body, err := ioutil.ReadAll(r.Body)
 
-    // return error status + msg if read fails
+    // unmarshall the json
+    var data interface{}
+    err = json.Unmarshal(body, data)
+
+    // return error status + msg if read/unmarshall fails
     if err != nil {
       w.WriteHeader(http.StatusBadRequest)
-      w.Write([]byte("Unable to read body"))
+      w.Write([]byte("Unable to read request body"))
       return
     }
 
-    // unmarshal the request payload
-    var data Data
-    err = json.Unmarshal(body, &data)
+    // process this request body, returning the response body
+    response := processPostReq(data.(map[string]interface{}), w, r) // also sets status
 
-    // if unmarshal fails then return error status + msg
-    if err != nil {
-      w.WriteHeader(http.StatusBadRequest)
-      w.Write([]byte("Unable to unmarshal JSON request"))
-      log.Printf(fmt.Sprintf("%v", err))
-      return
-    }
-
-    // *** print the body ***
-    log.Printf("%v\n\n", string(body))
-
-    // retrieve session and update userData using request body
-    var updatedData Data
-    if data.SessionId != "" {
-
-      // ask the session manager for the session
-      var session Session
-      session, err = globalSessions.LoadSession(data.SessionId)
-
-      // if loading session failed, create error response
-      if err != nil {
-        w.WriteHeader(http.StatusBadRequest)
-        w.Write([]byte(err.Error()))
-        return
-      }
-
-      // else, update this user's userData
-      updatedData = updateUser(session, data)
-    }
-
-    // if all okay, return ok status, set headers and put updated userData in body
-    w.WriteHeader(http.StatusOK)
+    // return the response
     w.Header().Set("Content-Type", "application/json")
-    response, err := json.Marshal(updatedData)
-
-    // if marshalling json fails, panic
-    if err != nil {
-      panic(err)
-    }
-
-    // finally, write response
     w.Write(response)
 
   } else {
@@ -149,37 +116,106 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
   }
 }
 
-func updateUser(session Session, newData Data) Data {
-  // lock the session, it can only be modified at once
+func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.Request) []byte {
+  // 1. get the event type from the json
+  eventType, exists := data["eventType"];
+  if !exists || eventType == "" {
+
+    // if the json doesn't have this field, return a 400
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("Request body must include an `eventType` field")
+  }
+
+  // 2. get the session id
+  sid, exists := data["sessionId"]
+  if !exists || eventType == "" {
+
+    // if the json doesn't have this field, return a 400
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("Request must include a sessionId")
+  }
+
+  // retrieve this users session
+  session, err := globalSessions.LoadSession(sid.(string))
+  if err != nil {
+
+    // if retrieving this session fails, return a 401
+    w.WriteHeader(http.StatusUnauthorized)
+    return []byte(err.Error())
+  }
+
+  // 3. process data based on given eventType
   session.lock.Lock()
   defer session.lock.Unlock()
-
-  // update session.userData
-  currentData := session.userData
-  updatedData := updateData(currentData, newData)
-
-  return updatedData
+  switch eventType {
+  case "copyAndPaste":
+    return processCopyAndPaste(data, session, w, r)
+  case "resizeWindow":
+    return processResizeWindow(data, session, w, r)
+  case "timeTaken":
+    return processTimeTaken(data, session, w, r)
+  default:
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("Value of eventType not recognised")
+  }
 }
 
-func updateData(old, new Data) Data {
-  // TODO: this is all too simplistic wrt invalid requests
-  updated := old
-  if new.WebsiteUrl != "" {
-    updated.WebsiteUrl = new.WebsiteUrl
+
+func processCopyAndPaste(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
+  // get the (string) pasted field from request json
+  pasted, exists0 := data["pasted"]
+
+  // get the (string) formId field from request json
+  formId, exists1 := data["formId"]
+
+  // convert field to boolean
+  isPasted, err := strconv.ParseBool(pasted.(string))
+
+  // return 401 if any operation failed
+  if (err != nil || !exists0 || !exists1) {
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("copyAndPaste request must also include `pasted` boolean field and `formId` string field")
   }
-  if (new.ResizeFrom != Dimension{}) {
-    updated.ResizeFrom = new.ResizeFrom
+
+  // update session copy- or pasteFormField maps
+  formIdStr := formId.(string)
+  if isPasted {
+    session.pasteFormField[formIdStr] = true
+  } else {
+    session.copyFormField[formIdStr]  = true
   }
-  if (new.ResizeTo != Dimension{}) {
-    updated.ResizeTo = new.ResizeTo
+
+  // if both are true, then update the userData too
+  if session.pasteFormField[formIdStr] && session.copyFormField[formIdStr] {
+    session.userData.CopyAndPaste[formIdStr] = true
   }
-  if new.CopyAndPaste != nil {
-    for k, v := range new.CopyAndPaste {
-      updated.CopyAndPaste[k] = v
-    }
-  }
-  return updated
+
+  // return ok response with userData
+  return jsonMarshal(session.userData, w, r)
 }
+
+
+func processTimeTaken(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
+  return []byte("")
+}
+
+func processResizeWindow(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
+  return []byte("")
+}
+
+
+func jsonMarshal(data Data, w http.ResponseWriter, r *http.Request) []byte {
+  response, err := json.Marshal(data)
+
+  if err != nil {
+    w.WriteHeader(http.StatusInternalServerError)
+    return []byte("Internal Server Error: json marshalling failed")
+  }
+
+  w.WriteHeader(http.StatusOK)
+  return response
+}
+
 
 func invalidVerb(w http.ResponseWriter, r *http.Request) {
   // write a 404 error if we don't support a request with this verb
@@ -195,6 +231,8 @@ type Session struct {
   timeAccessed time.Time
   userData Data
   lock sync.Mutex
+  copyFormField map[string]bool // map[fieldId]true
+  pasteFormField map[string]bool // map[fieldId]true
 }
 
 // The data type we wish to maintain for each user
@@ -204,7 +242,7 @@ type Data struct {
   ResizeFrom         Dimension
   ResizeTo           Dimension
   CopyAndPaste       map[string]bool // map[fieldId]true
-  FormCompletionTime int // Seconds
+  FormCompletionTime int             // Seconds
 }
 
 type Dimension struct {
@@ -213,7 +251,7 @@ type Dimension struct {
 }
 
 
-// The type for a SessionManager
+// The struct and methods for a SessionManager
 type SessionManager struct {
   name        string
   lock        sync.Mutex                   // protects session from races
@@ -231,7 +269,12 @@ func (manager *SessionManager) NewSession() (Session) {
   sid := manager.sessionId()
 
   // create new session object
-  session := Session{Sid: sid, timeAccessed: time.Now(), userData: Data{SessionId: sid}}
+  session := Session{
+    Sid: sid,
+    timeAccessed: time.Now(),
+    userData: Data{SessionId: sid},
+    copyFormField: make(map[string]bool),
+    pasteFormField: make(map[string]bool) }
 
   // register in sessions map
   manager.sessions[sid] = session

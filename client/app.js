@@ -1,3 +1,5 @@
+// TODO sessionId key in json shouldn't be capitalised (and other fields)
+
 // url to make requests too
 var url = "http://localhost:8080/";
 var session_id;
@@ -78,6 +80,18 @@ function post_resize(ResizeFrom, ResizeTo, callback) {
   request.send( JSON.stringify(data) );
 }
 
+function post_form_elem_copypaste(data, callback) {
+  var request = new XMLHttpRequest();
+  request.open('POST', url);
+  request.responseType = 'json';
+  request.onload = function() {
+    callback(request.response);
+  };
+  request.send( JSON.stringify(data) );
+}
+
+
+// event listeners
 
 function resize() {
   // prepare ResizeFrom field for request
@@ -96,6 +110,21 @@ function resize() {
   });
 }
 
+function form_elem(pasted, form_id) {
+  var pasted = pasted == "paste";
+
+  var data = {
+    "eventType": "copyAndPaste",
+    "websiteUrl": website_url,
+    "SessionId": session_id,
+    "pasted": pasted,
+    "formId": form_id
+  };
+
+  post_form_elem_copypaste(data, function(response) {
+    console.log(response);
+  });
+}
 
 
 
