@@ -1,5 +1,3 @@
-// TODO sessionId key in json shouldn't be capitalised (and other fields)
-
 // url to make requests too
 var url = "http://localhost:8080/";
 var session_id;
@@ -13,31 +11,7 @@ var height = window.innerHeight;
 var width = window.innerWidth;
 
 
-function post_website_url(callback) {
-  // create xhttp req object
-  var request = new XMLHttpRequest();
-
-  // open a post request
-  request.open('POST', url);
-
-  // set response type to json
-  request.responseType = 'json';
-
-  // define callback upon response
-  request.onload = function() {
-    callback(request.response)
-  };
-
-  // define the request payload
-  var data = {
-    "WebsiteUrl": website_url,
-    "SessionId": session_id
-  };
-
-  // finally, make the request
-  request.send( JSON.stringify(data) );
-
-}
+// post request-ers
 
 function post_new_session(callback) {
   // create xhttp req object
@@ -56,21 +30,27 @@ function post_new_session(callback) {
   request.onload = function() {
     if (request.response) {
       session_id = request.response.SessionId;
-      callback();
+      callback(request.response);
     }
-  }
+  };
+
+  // payload
+  var data = {
+    "websiteUrl": website_url
+  };
 
   // make the request
-  request.send();
+  request.send( JSON.stringify(data) );
 }
 
 function post_resize(ResizeFrom, ResizeTo, callback) {
   var request = new XMLHttpRequest();
   var data = {
-    "WebsiteUrl": website_url,
-    "SessionId": session_id,
-    "ResizeFrom": ResizeFrom,
-    "ResizeTo": ResizeTo
+    "eventType": "resizeWindow",
+    "websiteUrl": website_url,
+    "sessionId": session_id,
+    "resizeFrom": ResizeFrom,
+    "resizeTo": ResizeTo
   };
   request.open('POST', url);
   request.responseType = 'json';
@@ -95,14 +75,14 @@ function post_form_elem_copypaste(data, callback) {
 
 function resize() {
   // prepare ResizeFrom field for request
-  var ResizeFrom = { "Height": height.toString(), "Width": width.toString() }
+  var ResizeFrom = { "height": height.toString(), "width": width.toString() }
 
   // update width and height
   height = window.innerHeight
   width  = window.innerWidth
 
   // prepare ResizeTo field for request
-  var ResizeTo = { "Height": height.toString(), "Width": width.toString() }
+  var ResizeTo = { "height": height.toString(), "width": width.toString() }
 
   // make a post request with new and old dimensions
   post_resize(ResizeFrom, ResizeTo, function(response) {
@@ -116,7 +96,7 @@ function form_elem(pasted, form_id) {
   var data = {
     "eventType": "copyAndPaste",
     "websiteUrl": website_url,
-    "SessionId": session_id,
+    "sessionId": session_id,
     "pasted": pasted,
     "formId": form_id
   };
@@ -144,8 +124,5 @@ function run() {
   }
   else {
     console.log(session_id);
-    post_website_url(function(response) {
-      console.log(response);
-    });
   }
 }

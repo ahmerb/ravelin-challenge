@@ -12,7 +12,6 @@ import (
   "crypto/rand"
   "time"
   "sync"
-  "strconv"
 )
 
 // The global session manager
@@ -105,12 +104,13 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 
     // unmarshall the json
     var data interface{}
-    err = json.Unmarshal(body, data)
+    err = json.Unmarshal(body, &data)
 
     // return error status + msg if read/unmarshall fails
     if err != nil {
       w.WriteHeader(http.StatusBadRequest)
       w.Write([]byte("Unable to read request body"))
+      log.Printf(err.Error())
       return
     }
 
@@ -130,6 +130,8 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// Handle an event as indicated by a post request e.g. copyAndPaste
+
 func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.Request) []byte {
   // 1. get the event type from the json
   eventType, exists := data["eventType"];
@@ -144,8 +146,8 @@ func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.
   sid, exists := data["sessionId"]
   if !exists || eventType == "" {
 
-    // if the json doesn't have this field, return a 400
-    w.WriteHeader(http.StatusBadRequest)
+    // if the json doesn't have this field, return a 401
+    w.WriteHeader(http.StatusUnauthorized)
     return []byte("Request must include a sessionId")
   }
 
@@ -183,10 +185,10 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
   formId, exists1 := data["formId"]
 
   // convert field to boolean
-  isPasted, err := strconv.ParseBool(pasted.(string)) // XXX
+  isPasted, ok := pasted.(bool) // XXX
 
   // return 401 if any operation failed
-  if (err != nil || !exists0 || !exists1) {
+  if (!ok || !exists0 || !exists1) {
     w.WriteHeader(http.StatusBadRequest)
     return []byte("copyAndPaste request must also include `pasted` boolean field and `formId` string field")
   }
@@ -220,8 +222,8 @@ func processTimeTaken(data map[string]interface{}, session Session, w http.Respo
   }
 
   // parse time field into int
-  timeInt, err := strconv.Atoi(time.(string))
-  if err != nil {
+  timeInt, ok := time.(int)
+  if !ok {
     w.WriteHeader(http.StatusBadRequest)
     return []byte("timeTaken request must include `time` integer field")
   }
@@ -236,28 +238,32 @@ func processTimeTaken(data map[string]interface{}, session Session, w http.Respo
 
 func processResizeWindow(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
   // get the dimension fields ResizeFrom ResizeTo
-  resizeFrom, exists0 := data["ResizeFrom"]
-  resizeTo,   exists1 := data["ResizeTo"]
+  resizeFrom, exists0 := data["resizeFrom"]
+  resizeTo,   exists1 := data["resizeTo"]
 
   // return 401 if either don't exist
   if (!exists0 || !exists1) {
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("resizeWindow request must include `ResizeFrom` and `ResizeTo` dimension objects")
+    return []byte("resizeWindow request must include `resizeFrom` and `resizeTo` dimension objects")
   }
 
-  // attempt to type assert both to Dimension's
-  resizeFromDim, ok0 := resizeFrom.(Dimension)
-  resizeToDim,   ok1 := resizeTo.(Dimension)
+  // attempt to parse dimensions
+  resizeFrom_ := resizeFrom.(map[string](interface {}))
+  resizeTo_   := resizeTo.(map[string](interface {}))
+  fromHeight, ok0 := resizeFrom_["height"].(string)
+  fromWidth , ok1 := resizeFrom_["width"].(string)
+  toHeight  , ok2 := resizeTo_["height"].(string)
+  toWidth   , ok3 := resizeTo_["width"].(string)
 
   // if either failed, return 401
-  if !ok0 || !ok1 {
+  if !ok0 || !ok1 || !ok2 || !ok3 {
     w.WriteHeader(http.StatusBadRequest)
     return []byte("resizeWindow: Resize dimensions in incorrect format")
   }
 
   // update userData
-  session.userData.ResizeFrom = resizeFromDim
-  session.userData.ResizeTo   = resizeToDim
+  session.userData.ResizeFrom = Dimension{ Height: fromHeight, Width: fromWidth }
+  session.userData.ResizeTo   = Dimension{ Height: toHeight  , Width: toWidth   }
 
   // return ok response with updated userData
   return jsonMarshal(session.userData, w, r)
@@ -309,6 +315,7 @@ type Data struct {
   FormCompletionTime int             // Seconds
 }
 
+// A dimension
 type Dimension struct {
   Width  string
   Height string
