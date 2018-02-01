@@ -44,15 +44,25 @@ func main() {
 // Request Handlers
 
 func newSessionHandler(w http.ResponseWriter, r *http.Request) {
+  // parse the payload to get SessionRequest obj
+  var sessionReq SessionRequest
+  err := json.NewDecoder(r.Body).Decode(&sessionReq)
+  if err != nil {
+    w.WriteHeader(http.StatusInternalServerError)
+    w.Write([]byte("Session Request must include `websiteUrl` string field"))
+    return
+  }
+
   // create a new session
-  session := globalSessions.NewSession()
+  session := globalSessions.NewSession(sessionReq)
 
   // return the session id to the client
   response, err := json.Marshal(session)
 
   // if failed to marshal json, panic
   if err != nil {
-    panic(err)
+    w.WriteHeader(http.StatusInternalServerError)
+    w.Write([]byte("Internal Server Error: json marshalling failed"))
   }
 
   // set headers and construct response body
@@ -104,6 +114,9 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
       return
     }
 
+    // *** log the body ***
+    log.Printf(body)
+
     // process this request body, returning the response body
     response := processPostReq(data.(map[string]interface{}), w, r) // also sets status
 
@@ -115,6 +128,7 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     invalidVerb(w, r)
   }
 }
+
 
 func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.Request) []byte {
   // 1. get the event type from the json
@@ -145,7 +159,7 @@ func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.
   }
 
   // 3. process data based on given eventType
-  session.lock.Lock()
+  session.lock.Lock() // lock the session
   defer session.lock.Unlock()
   switch eventType {
   case "copyAndPaste":
@@ -169,7 +183,7 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
   formId, exists1 := data["formId"]
 
   // convert field to boolean
-  isPasted, err := strconv.ParseBool(pasted.(string))
+  isPasted, err := strconv.ParseBool(pasted.(string)) // XXX
 
   // return 401 if any operation failed
   if (err != nil || !exists0 || !exists1) {
@@ -190,17 +204,63 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
     session.userData.CopyAndPaste[formIdStr] = true
   }
 
-  // return ok response with userData
+  // return ok response with updated userData
   return jsonMarshal(session.userData, w, r)
 }
 
 
 func processTimeTaken(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
-  return []byte("")
+  // get the time field
+  time, exists := data["time"]
+
+  // return 401 if it doesn't exist
+  if !exists {
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("timeTaken request must include `time` integer field")
+  }
+
+  // parse time field into int
+  timeInt, err := strconv.Atoi(time.(string))
+  if err != nil {
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("timeTaken request must include `time` integer field")
+  }
+
+  // update userData
+  session.userData.FormCompletionTime = timeInt
+
+  // return ok response with updated userData
+  return jsonMarshal(session.userData, w, r)
 }
 
+
 func processResizeWindow(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
-  return []byte("")
+  // get the dimension fields ResizeFrom ResizeTo
+  resizeFrom, exists0 := data["ResizeFrom"]
+  resizeTo,   exists1 := data["ResizeTo"]
+
+  // return 401 if either don't exist
+  if (!exists0 || !exists1) {
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("resizeWindow request must include `ResizeFrom` and `ResizeTo` dimension objects")
+  }
+
+  // attempt to type assert both to Dimension's
+  resizeFromDim, ok0 := resizeFrom.(Dimension)
+  resizeToDim,   ok1 := resizeTo.(Dimension)
+
+  // if either failed, return 401
+  if !ok0 || !ok1 {
+    w.WriteHeader(http.StatusBadRequest)
+    return []byte("resizeWindow: Resize dimensions in incorrect format")
+  }
+
+  // update userData
+  session.userData.ResizeFrom = resizeFromDim
+  session.userData.ResizeTo   = resizeToDim
+
+  // return ok response with updated userData
+  return jsonMarshal(session.userData, w, r)
 }
 
 
@@ -224,6 +284,10 @@ func invalidVerb(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// Format for client to request a session
+type SessionRequest struct {
+  WebsiteUrl string
+}
 
 // A session
 type Session struct {
@@ -260,7 +324,7 @@ type SessionManager struct {
 }
 
 
-func (manager *SessionManager) NewSession() (Session) {
+func (manager *SessionManager) NewSession(sessionReq SessionRequest) (Session) {
   // races are bad
   manager.lock.Lock()
   defer manager.lock.Unlock()
@@ -272,7 +336,7 @@ func (manager *SessionManager) NewSession() (Session) {
   session := Session{
     Sid: sid,
     timeAccessed: time.Now(),
-    userData: Data{SessionId: sid},
+    userData: Data{SessionId: sid, WebsiteUrl: sessionReq.WebsiteUrl, CopyAndPaste: make(map[string]bool)},
     copyFormField: make(map[string]bool),
     pasteFormField: make(map[string]bool) }
 
