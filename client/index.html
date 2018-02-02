@@ -47,7 +47,7 @@ body {
 
     <div class="container">
 
-      <form class="form-details" onsubmit="form_submit()">
+      <form action="/" method="get" class="form-details" onsubmit="form_submit()">
 
         <h2 class="form-details-heading">Details</h2>
 
@@ -77,6 +77,8 @@ body {
             <input type="checkbox" value="agree"> Agree to Terms
           </label>
         </div>
+
+        <input type="hidden" name="sessionId" id="sessionId">
 
         <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button>
       </form>

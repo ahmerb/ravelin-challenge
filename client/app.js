@@ -89,7 +89,7 @@ function post_time_taken(time_taken, callback) {
     "websiteUrl": website_url,
     "sessionId": session_id,
     "time": time_taken
-  }
+  };
 
   request.send( JSON.stringify(data) );
 }
@@ -139,6 +139,7 @@ function key_down() {
 }
 
 function form_submit() {
+  // send timeTakem
   var date = new Date();
   keydown.time_end = date.getTime();
   var time_taken = Math.round((keydown.time_end - keydown.time_start) / 1000);
@@ -156,11 +157,15 @@ function main() {
   post_new_session(run);
 }
 
-function run() {
+function run(response) {
   if (!session_id && session_id == "") {
     console.log("failed to create session");
   }
   else {
     console.log(session_id);
+
+    // set the sessionId in the field
+    var form_field_sid = document.getElementById("sessionId");
+    form_field_sid.value = session_id;
   }
 }

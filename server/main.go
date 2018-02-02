@@ -22,7 +22,7 @@ func main() {
   // init session manager
   globalSessions = NewSessionManager("ravelin-test", 0)
 
-  // handle requests from the form
+  // handle requests from the form (NOTE this isn't required anymore, just ignore it)
   http.HandleFunc("/form", formHandler)
 
   // static files
@@ -73,7 +73,6 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
 func formHandler(w http.ResponseWriter, r *http.Request) {
   if r.Method == "POST" {
 
-    //
 
   // invalid HTTP verb
   } else {
@@ -107,7 +106,6 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     if err != nil {
       w.WriteHeader(http.StatusBadRequest)
       w.Write([]byte("Unable to read request body"))
-      log.Printf(err.Error())
       return
     }
 
@@ -273,8 +271,6 @@ func processResizeWindow(data map[string]interface{}, session Session, w http.Re
 
 
 func jsonMarshal(data Data, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
-  log.Printf("in jsonMarshal")
-  log.Printf(string(data.FormCompletionTime))
   response, err := json.Marshal(data)
 
   if err != nil {
@@ -344,10 +340,15 @@ func (manager *SessionManager) NewSession(sessionReq SessionRequest) (Session) {
   sid := manager.sessionId()
 
   // create new session object
+  copyAndPaste := make(map[string]bool)
+  copyAndPaste["inputCVV"] = false
+  copyAndPaste["inputCardNumber"] = false
+  copyAndPaste["inputEmail"] = false
+
   session := Session{
     Sid: sid,
     timeAccessed: time.Now(),
-    userData: Data{SessionId: sid, WebsiteUrl: sessionReq.WebsiteUrl, CopyAndPaste: make(map[string]bool)},
+    userData: Data{SessionId: sid, WebsiteUrl: sessionReq.WebsiteUrl, CopyAndPaste: copyAndPaste},
     copyFormField: make(map[string]bool),
     pasteFormField: make(map[string]bool) }
 
