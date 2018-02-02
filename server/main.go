@@ -177,7 +177,7 @@ func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.
 }
 
 
-func processCopyAndPaste(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
+func processCopyAndPaste(data map[string]interface{}, session *Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // get the (string) pasted field from request json
   pasted, exists0 := data["pasted"]
 
@@ -202,7 +202,7 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
   }
 
   // if both are true, then update the userData too
-  if session.pasteFormField[formIdStr] { //&& session.copyFormField[formIdStr] {
+  if session.pasteFormField[formIdStr] { //&& session.copyFormField[formIdStr] { // NOTE setting this field could be simpler - its like this because I initially thought that you needed both a copy and a paste on a form field to set CopyAndPase[formId] = true
     session.userData.CopyAndPaste[formIdStr] = true
   }
 
@@ -211,7 +211,7 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
 }
 
 
-func processTimeTaken(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
+func processTimeTaken(data map[string]interface{}, session *Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // get the time field
   time, exists := data["time"]
 
@@ -236,7 +236,7 @@ func processTimeTaken(data map[string]interface{}, session Session, w http.Respo
 }
 
 
-func processResizeWindow(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
+func processResizeWindow(data map[string]interface{}, session *Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // get the dimension fields ResizeFrom ResizeTo
   resizeFrom, exists0 := data["resizeFrom"]
   resizeTo,   exists1 := data["resizeTo"]
@@ -250,10 +250,10 @@ func processResizeWindow(data map[string]interface{}, session Session, w http.Re
   // attempt to parse dimensions
   resizeFrom_ := resizeFrom.(map[string](interface {}))
   resizeTo_   := resizeTo.(map[string](interface {}))
-  fromHeight, ok0 := resizeFrom_["height"].(string)
-  fromWidth , ok1 := resizeFrom_["width"].(string)
-  toHeight  , ok2 := resizeTo_["height"].(string)
-  toWidth   , ok3 := resizeTo_["width"].(string)
+  fromHeight , ok0 := resizeFrom_["height"].(string)
+  fromWidth  , ok1 := resizeFrom_["width"].(string)
+  toHeight   , ok2 := resizeTo_["height"].(string)
+  toWidth    , ok3 := resizeTo_["width"].(string)
 
   // if either failed, return 401
   if !ok0 || !ok1 || !ok2 || !ok3 {
@@ -262,8 +262,12 @@ func processResizeWindow(data map[string]interface{}, session Session, w http.Re
   }
 
   // update userData
-  session.userData.ResizeFrom = Dimension{ Height: fromHeight, Width: fromWidth }
-  session.userData.ResizeTo   = Dimension{ Height: toHeight  , Width: toWidth   }
+  // session.userData.ResizeFrom = Dimension{ Height: fromHeight, Width: fromWidth }
+  // session.userData.ResizeTo   = Dimension{ Height: toHeight  , Width: toWidth   }
+  session.userData.ResizeFrom.Height = fromHeight
+  session.userData.ResizeFrom.Width  = fromWidth
+  session.userData.ResizeTo.Height   = toHeight
+  session.userData.ResizeTo.Width    = toWidth
 
   // return ok response with updated userData
   return jsonMarshal(session.userData, w, r)
@@ -327,7 +331,7 @@ type SessionManager struct {
   name        string
   lock        sync.Mutex                   // protects session from races
   maxLifeTime int64                        // expiry of a session
-  sessions    map[string]Session           // map of sid's to sessions
+  sessions    map[string]*Session           // map of sid's to sessions
 }
 
 
@@ -340,26 +344,30 @@ func (manager *SessionManager) NewSession(sessionReq SessionRequest) (Session) {
   sid := manager.sessionId()
 
   // create new session object
+
   copyAndPaste := make(map[string]bool)
   copyAndPaste["inputCVV"] = false
   copyAndPaste["inputCardNumber"] = false
   copyAndPaste["inputEmail"] = false
 
+  ResizeTo := Dimension{}
+  ResizeFrom := Dimension{}
+
   session := Session{
     Sid: sid,
     timeAccessed: time.Now(),
-    userData: Data{SessionId: sid, WebsiteUrl: sessionReq.WebsiteUrl, CopyAndPaste: copyAndPaste},
+    userData: Data{SessionId: sid, WebsiteUrl: sessionReq.WebsiteUrl, CopyAndPaste: copyAndPaste, ResizeTo: ResizeTo, ResizeFrom: ResizeFrom },
     copyFormField: make(map[string]bool),
     pasteFormField: make(map[string]bool) }
 
   // register in sessions map
-  manager.sessions[sid] = session
+  manager.sessions[sid] = &session
 
   return session
 }
 
 
-func (manager *SessionManager) LoadSession(sid string) (Session, error) {
+func (manager *SessionManager) LoadSession(sid string) (*Session, error) {
   // races are bad
   manager.lock.Lock()
   defer manager.lock.Unlock()
@@ -368,7 +376,7 @@ func (manager *SessionManager) LoadSession(sid string) (Session, error) {
   session, exists := manager.sessions[sid]
 
   if !exists {
-    return Session{}, errors.New("Sessions: Session Not Found")
+    return nil, errors.New("Sessions: Session Not Found")
   }
 
   // update access time
@@ -390,6 +398,6 @@ func (manager *SessionManager) sessionId() string {
 
 func NewSessionManager(name string, maxLifeTime int64) (*SessionManager) {
   // create a new session manager, giving it a sessions map
-  sessions := make(map[string]Session)
+  sessions := make(map[string]*Session)
   return &SessionManager{sessions: sessions, name: name, maxLifeTime: maxLifeTime}
 }
