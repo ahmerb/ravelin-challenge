@@ -10,6 +10,12 @@ window.onresize = resize;
 var height = window.innerHeight;
 var width = window.innerWidth;
 
+// track time between first key down and form submit
+var keydown = {
+  "key_pressed": false,
+  "time_start": null,   // time on first key press in an input field (milliseconds)
+  "time_end": null,     // time on form submit (milliseconds)
+};
 
 // post request-ers
 
@@ -70,6 +76,23 @@ function post_form_elem_copypaste(data, callback) {
   request.send( JSON.stringify(data) );
 }
 
+function post_time_taken(time_taken, callback) {
+  var request = new XMLHttpRequest();
+  request.open('POST', url);
+  request.responseType = 'json';
+  request.onload = function() {
+    callback(request.response);
+  };
+
+  var data = {
+    "eventType": "timeTaken",
+    "websiteUrl": website_url,
+    "sessionId": session_id,
+    "time": time_taken
+  }
+
+  request.send( JSON.stringify(data) );
+}
 
 // event listeners
 
@@ -106,8 +129,23 @@ function form_elem(pasted, form_id) {
   });
 }
 
+function key_down() {
+  if (keydown.key_pressed) {
+    return;
+  }
+  var date = new Date();
+  keydown.time_start = date.getTime();
+  keydown.key_pressed = true;
+}
 
-
+function form_submit() {
+  var date = new Date();
+  keydown.time_end = date.getTime();
+  var time_taken = (keydown.time_end - keydown.time_start) / 1000;
+  post_time_taken(time_taken, function(response) {
+    console.log(response);
+  });
+}
 
 // ========================
 
