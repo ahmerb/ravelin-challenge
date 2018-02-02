@@ -75,3 +75,6 @@ Being my first time, it's quite possible there are patterns I've used which are 
 However, I've tried to avoid that.
 I used the Tour of Go, the go docs and some of this [book](https://astaxie.gitbooks.io/build-web-application-with-golang/)
 to learn it.
+
+I didn't have time to implement some really fancy stuff like (good) input validation, tokens (to avoid cross site
+request forgery) and some other stuff.
