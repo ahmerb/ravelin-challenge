@@ -141,7 +141,7 @@ function key_down() {
 function form_submit() {
   var date = new Date();
   keydown.time_end = date.getTime();
-  var time_taken = (keydown.time_end - keydown.time_start) / 1000;
+  var time_taken = Math.round((keydown.time_end - keydown.time_start) / 1000);
   post_time_taken(time_taken, function(response) {
     console.log(response);
   });

@@ -73,9 +73,7 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
 func formHandler(w http.ResponseWriter, r *http.Request) {
   if r.Method == "POST" {
 
-    // parse the form and log a msg
-    r.ParseForm()
-    log.Printf("received a form")
+    //
 
   // invalid HTTP verb
   } else {
@@ -114,10 +112,15 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // *** log the body ***
-    log.Printf(string(body))
+    // log.Printf(string(body))
 
-    // process this request body, returning the response body
-    response := processPostReq(data.(map[string]interface{}), w, r) // also sets status
+    // process this request body, returning the response body and the data structure to print
+    response, userData, print := processPostReq(data.(map[string]interface{}), w, r) // also sets status
+
+    // *** log the userData struct ***
+    if print {
+      log.Printf(fmt.Sprintf("\n%+v\n", *userData))
+    }
 
     // return the response
     w.Header().Set("Content-Type", "application/json")
@@ -131,14 +134,14 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 
 // Handle an event as indicated by a post request e.g. copyAndPaste
 
-func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.Request) []byte {
+func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // 1. get the event type from the json
   eventType, exists := data["eventType"];
   if !exists || eventType == "" {
 
     // if the json doesn't have this field, return a 400
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("Request body must include an `eventType` field")
+    return []byte("Request body must include an `eventType` field"), nil, false
   }
 
   // 2. get the session id
@@ -147,7 +150,7 @@ func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.
 
     // if the json doesn't have this field, return a 401
     w.WriteHeader(http.StatusUnauthorized)
-    return []byte("Request must include a sessionId")
+    return []byte("Request must include a sessionId"), nil, false
   }
 
   // retrieve this users session
@@ -156,7 +159,7 @@ func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.
 
     // if retrieving this session fails, return a 401
     w.WriteHeader(http.StatusUnauthorized)
-    return []byte(err.Error())
+    return []byte(err.Error()), nil, false
   }
 
   // 3. process data based on given eventType
@@ -171,12 +174,12 @@ func processPostReq(data map[string]interface{}, w http.ResponseWriter, r *http.
     return processTimeTaken(data, session, w, r)
   default:
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("Value of eventType not recognised")
+    return []byte("Value of eventType not recognised"), nil, false
   }
 }
 
 
-func processCopyAndPaste(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
+func processCopyAndPaste(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // get the (string) pasted field from request json
   pasted, exists0 := data["pasted"]
 
@@ -184,12 +187,12 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
   formId, exists1 := data["formId"]
 
   // convert field to boolean
-  isPasted, ok := pasted.(bool) // XXX
+  isPasted, ok := pasted.(bool)
 
   // return 401 if any operation failed
   if (!ok || !exists0 || !exists1) {
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("copyAndPaste request must also include `pasted` boolean field and `formId` string field")
+    return []byte("copyAndPaste request must also include `pasted` boolean field and `formId` string field"), nil, false
   }
 
   // update session copy- or pasteFormField maps
@@ -201,7 +204,7 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
   }
 
   // if both are true, then update the userData too
-  if session.pasteFormField[formIdStr] && session.copyFormField[formIdStr] {
+  if session.pasteFormField[formIdStr] { //&& session.copyFormField[formIdStr] {
     session.userData.CopyAndPaste[formIdStr] = true
   }
 
@@ -210,32 +213,32 @@ func processCopyAndPaste(data map[string]interface{}, session Session, w http.Re
 }
 
 
-func processTimeTaken(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
+func processTimeTaken(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // get the time field
   time, exists := data["time"]
 
   // return 401 if it doesn't exist
   if !exists {
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("timeTaken request must include `time` integer field")
+    return []byte("timeTaken request must include `time` integer field"), nil, false
   }
 
-  // parse time field into int
-  timeInt, ok := time.(int)
+  // parse time field into number
+  timeNum, ok := time.(float64)
   if !ok {
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("timeTaken request must include `time` integer field")
+    return []byte("timeTaken: `time` field must be an integer"), nil, false
   }
 
   // update userData
-  session.userData.FormCompletionTime = timeInt
+  session.userData.FormCompletionTime = int(timeNum)
 
   // return ok response with updated userData
   return jsonMarshal(session.userData, w, r)
 }
 
 
-func processResizeWindow(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) []byte {
+func processResizeWindow(data map[string]interface{}, session Session, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
   // get the dimension fields ResizeFrom ResizeTo
   resizeFrom, exists0 := data["resizeFrom"]
   resizeTo,   exists1 := data["resizeTo"]
@@ -243,7 +246,7 @@ func processResizeWindow(data map[string]interface{}, session Session, w http.Re
   // return 401 if either don't exist
   if (!exists0 || !exists1) {
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("resizeWindow request must include `resizeFrom` and `resizeTo` dimension objects")
+    return []byte("resizeWindow request must include `resizeFrom` and `resizeTo` dimension objects"), nil, false
   }
 
   // attempt to parse dimensions
@@ -257,7 +260,7 @@ func processResizeWindow(data map[string]interface{}, session Session, w http.Re
   // if either failed, return 401
   if !ok0 || !ok1 || !ok2 || !ok3 {
     w.WriteHeader(http.StatusBadRequest)
-    return []byte("resizeWindow: Resize dimensions in incorrect format")
+    return []byte("resizeWindow: Resize dimensions in incorrect format"), nil, false
   }
 
   // update userData
@@ -269,16 +272,18 @@ func processResizeWindow(data map[string]interface{}, session Session, w http.Re
 }
 
 
-func jsonMarshal(data Data, w http.ResponseWriter, r *http.Request) []byte {
+func jsonMarshal(data Data, w http.ResponseWriter, r *http.Request) ([]byte, *Data, bool) {
+  log.Printf("in jsonMarshal")
+  log.Printf(string(data.FormCompletionTime))
   response, err := json.Marshal(data)
 
   if err != nil {
     w.WriteHeader(http.StatusInternalServerError)
-    return []byte("Internal Server Error: json marshalling failed")
+    return []byte("Internal Server Error: json marshalling failed"), nil, false
   }
 
   w.WriteHeader(http.StatusOK)
-  return response
+  return response, &data, true
 }
 
 
