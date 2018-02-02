@@ -35,7 +35,6 @@ func main() {
   http.HandleFunc("/", dataHandler)
 
   fmt.Println("Server now running on localhost:8080")
-  fmt.Println(`Try running: curl -X POST -d '{"SessionId":"test123"}' http://localhost:8080/`)
   log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -47,7 +46,7 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
   var sessionReq SessionRequest
   err := json.NewDecoder(r.Body).Decode(&sessionReq)
   if err != nil {
-    w.WriteHeader(http.StatusInternalServerError)
+    w.WriteHeader(http.StatusBadRequest)
     w.Write([]byte("Session Request must include `websiteUrl` string field"))
     return
   }

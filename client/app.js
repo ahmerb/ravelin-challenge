@@ -3,7 +3,7 @@ var url = "http://localhost:8080/";
 var session_id;
 
 // url of this website
-var website_url = "https://www.hello.co.uk/";
+var website_url = document.location.origin;
 
 // event listener for window resizes
 window.onresize = resize;
